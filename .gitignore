@@ -1,0 +1,14 @@
+# Folders
+bin/
+flight_data/
+gribs/
+include/
+lib/
+lib/64
+outputs/
+results/
+RF_interpolation_data/
+test/
+YOU/
+randomseed
+*.png
