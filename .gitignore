@@ -4,7 +4,7 @@ flight_data/
 gribs/
 include/
 lib/
-lib/64
+lib64/
 outputs/
 results/
 RF_interpolation_data/
@@ -12,3 +12,4 @@ test/
 YOU/
 randomseed
 *.png
+pip-selfcheck.json
