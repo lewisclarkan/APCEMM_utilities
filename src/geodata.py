@@ -38,7 +38,7 @@ def open_dataset(sample):
         cachestore = DiskCacheStore(cache_dir = "../../../cache"),
         cache_download=True,
     )
-    met_t = era5ml.open_metdataset(xr_kwargs={"engine":"h5netcdf"})
+    met_t = era5ml.open_metdataset(xr_kwargs={"engine":"netcdf4"})
 
     geopotential = met_t.data.coords["altitude"].data
 
@@ -71,7 +71,7 @@ def get_temperature_and_clouds_met(sample):
         cache_download=True,
         ) 
     
-    met_t = era5ml.open_metdataset(xr_kwargs={"engine":"h5netcdf"})
+    met_t = era5ml.open_metdataset(xr_kwargs={"engine":"netcdf4"})
 
     geopotential = met_t.data.coords["altitude"].data
 

@@ -1,4 +1,63 @@
 import os
+import datetime
+
+import xarray as xr
+import numpy as np
+from pysolar.solar import *
+
+def write_output_header(file_name):
+
+    try:
+        os.remove(file_name)
+    except FileNotFoundError:
+        print("output.txt does not yet exist")
+
+    with open(file_name, "w") as f:
+        f.write("Index,Status,Latitude,Longitude,Altitude,Time\n")
+
+    return
+
+def write_output(file_name, sample, status):
+
+    with open(file_name, "a") as f:
+        f.write(f"{sample['index']},{status},{sample['latitude']:.2f},{sample['longitude']:.2f},{sample['altitude']:.1f},{sample['time']}\n")
+
+    return
+
+class apce_data_struct:
+    def __init__(self, t, ds_t, icemass, h2omass, numparts):
+        self.t = t
+        self.ds_t = ds_t
+        self.icemass = icemass
+        self.h2omass = h2omass
+        self.numparts = numparts
+    
+def read_apcemm_data(directory):
+    t_mins = []
+    ds_t = []
+    ice_mass = []
+    total_h2o_mass = []
+    num_particles = []
+
+    for file in sorted(os.listdir(directory)):
+        if(file.startswith('ts_aerosol') and file.endswith('.nc')):
+            file_path = os.path.join(directory,file)
+            ds = xr.open_dataset(file_path, engine = "netcdf4", decode_times = False)
+            ds_t.append(ds)
+            tokens = file_path.split('.')
+            mins = int(tokens[-2][-2:])
+            hrs = int(tokens[-2][-4:-2])
+            t_mins.append(hrs*60 + mins)
+
+            ice_mass.append(ds["Ice Mass"])
+            num_particles.append(ds["Number Ice Particles"])
+            dx = abs(ds["x"][-1] - ds["x"][0])/len(ds["x"])
+            dy = abs(ds["y"][-1] - ds["y"][0])/len(ds["y"])
+            
+            h2o_mass = W.sum(ds["H2O"]) * 1e6 / 6.022e23 * 0.018 * dx*dy + ds["Ice Mass"]
+            total_h2o_mass.append(h2o_mass.values)
+            
+    return apce_data_struct(t_mins, ds_t, ice_mass, total_h2o_mass, num_particles)
 
 def write_output_header_contrail(file_name):
 
@@ -268,3 +327,101 @@ def read_apcemm_data(directory):
             total_h2o_mass.append(h2o_mass.values)
             
     return apce_data_struct(t_mins, ds_t, ice_mass, total_h2o_mass, num_particles)
+
+def gen_lat_lon(sample):
+
+    def decdeg2dms(dd):
+        mult = -1 if dd < 0 else 1
+        mnt,sec = divmod(abs(dd)*3600, 60)
+        deg,mnt = divmod(mnt, 60)
+        return mult*deg, mult*mnt, mult*sec
+    
+    temp_lat = decdeg2dms(sample["latitude"])
+    temp_lon = decdeg2dms(sample["longitude"])
+
+    if temp_lat[0] < 0:
+        N_or_S = "S"
+    else:
+        N_or_S = "N"
+
+    temp_lat=np.absolute(np.array(temp_lat))
+    latitude = f"{N_or_S} {np.round(temp_lat[0],0):.0f} {np.round(temp_lat[1],0):.0f} {np.round(temp_lat[2],1):.1f}"
+
+    if temp_lon[0] < 0:
+        E_or_W = "W"
+    else:
+        E_or_W = "E"
+
+    temp_lon=np.absolute(np.array(temp_lon))
+    longitude = f"{E_or_W} {np.round(temp_lon[0],0):.0f} {np.round(temp_lon[1],0):.0f} {np.round(temp_lon[2],1):.1f}"
+    
+    return latitude, longitude
+
+def removeLow(arr, cutoff = 1e-3):
+    func = lambda x: (x > cutoff) * x
+    vfunc = np.vectorize(func)
+    return vfunc(arr)
+
+def generate_indices(x, y, quantity, samples):
+
+    indices = []
+    quantity_s = []
+    xs = []
+
+    for i in range(0, samples):
+        index = i * int(len(quantity)/samples)
+        indices.append(index)
+
+    for i in range(0,len(indices)-1):
+        quantity_s.append(quantity[:, indices[i]:indices[i+1]+1:1])
+        xs.append(x[indices[i]:indices[i+1]+1:1])
+
+    ys = y.values
+
+    return quantity_s, xs, ys
+
+def average_columns(quantity):
+
+    quantity_avg = []
+
+    for i in range(0, len(quantity)):
+        temp = []
+        for j in quantity[i]:
+            if j.size > 0:
+                temp.append((j.values).mean())
+            else:
+                temp.append(0)
+        quantity_avg.append(temp)
+
+    return quantity_avg
+
+def adjust_altitude(IWCs_avg, Eff_rads_avg, ys, base_altitude):
+
+    ys = (ys + base_altitude)/1000
+    ys = np.concatenate(([0, min(ys)-1/1000],ys))
+
+    temp = [0,0]
+
+    Eff_rads_temp_avg = []
+    IWCs_temp_avg = []
+
+    for i in range(0, len(Eff_rads_avg)):
+        Eff_rads_temp_avg.append(np.concatenate((temp, Eff_rads_avg[i])) * 10 ** 6)
+        IWCs_temp_avg.append(np.concatenate((temp, IWCs_avg[i]))*1000)
+
+
+    IWCs_avg = IWCs_temp_avg
+    Eff_rads_avg = Eff_rads_temp_avg
+
+    return IWCs_avg, Eff_rads_avg, ys
+
+def check_night(sample_time, latitude, longitude):
+    """Returns TRUE if the time is night, False otherwise"""
+
+    dobj = datetime.datetime(sample_time.year, sample_time.month, sample_time.day, sample_time.hour, sample_time.minute, sample_time.second, 0, tzinfo=datetime.timezone.utc)
+    solar_elevation = get_altitude(latitude, longitude, dobj)
+
+    if solar_elevation <= 2:
+        return True
+    else:
+        return False

@@ -4,7 +4,7 @@ import argparse
 import pickle
 import xarray as xr
 
-from src.radiative_forcing import read_apcemm_data, apce_data_struct, calc_sample
+from src.rf_core  import read_apcemm_data, apce_data_struct, calc_sample
 from src.file_management import write_output_header_contrail, write_output_contrail
 
 def average_particle_radius_over_time(ds_t):
